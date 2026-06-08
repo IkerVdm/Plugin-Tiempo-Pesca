@@ -370,6 +370,7 @@ final class DonPesca_Mar_Forecast {
         }
 
         $best_window = $windows[0];
+        $best_day_slot = $this->best_day_slot($windows, $reference);
         $tide_turns = $this->find_tide_turns($marine['times'], $marine['sea_level']);
         $tide_context = $this->tide_context($reference, $tide_turns);
         $fishing_fit = $this->classify_fishing_fit($best_window);
@@ -381,6 +382,7 @@ final class DonPesca_Mar_Forecast {
             'location' => $location,
             'summary' => $summary,
             'bestWindow' => $best_window,
+            'bestDaySlot' => $best_day_slot,
             'windows' => array_slice($windows, 0, 8),
             'astronomy' => $astronomy,
             'tides' => [
@@ -677,17 +679,17 @@ final class DonPesca_Mar_Forecast {
 
     private function classify_fishing_fit(array $window): array {
         $score = (float) $window['fishingScore'];
-        $label = 'Flojo';
-        $reason = 'No hay suficiente encaje entre seguridad, biología y momento de marea.';
+        $label = 'Baja';
+        $reason = 'No hay suficiente encaje entre mar, viento, momento de marea y lectura lunar.';
 
         if ($score >= 74) {
-            $label = 'Muy interesante';
-            $reason = 'Encaja bien para la familia objetivo y no depende de forzar demasiado la situación.';
+            $label = 'Alta';
+            $reason = 'La ventana reúne bastantes factores a favor y no depende tanto de forzar la situación.';
         } elseif ($score >= 60) {
-            $label = 'Interesante';
-            $reason = 'Tiene sentido, pero con selección fina de zona, táctica y duración de la salida.';
+            $label = 'Media-alta';
+            $reason = 'Tiene buen aspecto, pero exige elegir bien zona, táctica y duración de la salida.';
         } elseif ($score >= 46) {
-            $label = 'Justa';
+            $label = 'Media';
             $reason = 'Solo compensa si buscas una oportunidad concreta y muy controlada.';
         }
 
@@ -695,8 +697,55 @@ final class DonPesca_Mar_Forecast {
             'score' => round($score, 1),
             'label' => $label,
             'reason' => $reason,
-            'targetFamily' => $window['recommendationFamily'],
-            'targetLabel' => $window['recommendationLabel'],
+        ];
+    }
+
+    private function best_day_slot(array $windows, DateTimeImmutable $reference): ?array {
+        $target_date = $reference->format('Y-m-d');
+        $same_day = array_values(array_filter(
+            $windows,
+            static function (array $window) use ($target_date): bool {
+                return str_starts_with((string) ($window['time'] ?? ''), $target_date);
+            }
+        ));
+
+        if ($same_day === []) {
+            return null;
+        }
+
+        usort(
+            $same_day,
+            static function (array $a, array $b): int {
+                return ($b['fishingScore'] <=> $a['fishingScore']) ?: ($b['confidence'] <=> $a['confidence']);
+            }
+        );
+
+        $slot = $same_day[0];
+        $center = new DateTimeImmutable($slot['time']);
+        $start = $center->modify('-90 minutes');
+        $end = $center->modify('+90 minutes');
+
+        return [
+            'start' => $start->format(DateTimeInterface::ATOM),
+            'end' => $end->format(DateTimeInterface::ATOM),
+            'label' => wp_date('H:i', $start->getTimestamp(), wp_timezone()) . ' - ' . wp_date('H:i', $end->getTimestamp(), wp_timezone()),
+            'reason' => 'Es la franja del día con mejor equilibrio entre actividad potencial, marea útil, mar y confianza del parte.',
+            'status' => $slot['status'],
+            'confidence' => $slot['confidence'],
+            'fishingScore' => $slot['fishingScore'],
+            'windWorst' => $slot['windWorst'],
+            'gustWorst' => $slot['gustWorst'],
+            'waveHeight' => $slot['waveHeight'],
+            'wavePeriod' => $slot['wavePeriod'],
+            'waveDirection' => $slot['waveDirection'],
+            'waveEnergy' => $slot['waveEnergy'],
+            'tideState' => $slot['tideState'],
+            'coefficientType' => $slot['coefficientType'],
+            'moonPhase' => $slot['moonPhase'],
+            'moonFishingNote' => $slot['moonFishingNote'],
+            'tidePrevious' => $slot['tidePrevious'],
+            'tideNext' => $slot['tideNext'],
+            'reasonDetail' => $slot['reason'],
         ];
     }
 

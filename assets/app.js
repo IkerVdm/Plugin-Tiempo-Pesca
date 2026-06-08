@@ -47,7 +47,6 @@
           <span class="donpesca-pill donpesca-pill--${window.status.toLowerCase()}">${window.status}</span>
         </div>
         <p class="donpesca-copy">${window.reason}</p>
-        <p class="donpesca-copy"><strong>Mejor encaje:</strong> ${window.recommendationLabel} · ${window.recommendationFamily}</p>
         <div class="donpesca-metrics">
           <div><strong>${formatNumber(window.windWorst, 1, " kn")}</strong><span>Viento peor</span></div>
           <div><strong>${formatNumber(window.gustWorst, 1, " kn")}</strong><span>Racha peor</span></div>
@@ -82,6 +81,7 @@
 
   function renderReport(payload) {
     const best = payload.bestWindow;
+    const bestDaySlot = payload.bestDaySlot;
     const summary = payload.summary;
     const fishingFit = summary.fishingFit;
 
@@ -102,11 +102,11 @@
             </div>
             <div>
               <strong>${formatNumber(fishingFit.score, 0, "/100")}</strong>
-              <span>Encaje real</span>
+              <span>Probabilidad de pesca</span>
             </div>
             <div>
-              <strong>${fishingFit.targetLabel}</strong>
-              <span>Pez/familia recomendada</span>
+              <strong>${fishingFit.label}</strong>
+              <span>Lectura de pesca</span>
             </div>
           </div>
           <div class="donpesca-summary">
@@ -115,26 +115,28 @@
         </article>
 
         <article class="donpesca-card donpesca-card--snapshot">
-          <h3>Mejor ventana detectada</h3>
+          <h3>Franja más adecuada del día</h3>
           <dl class="donpesca-list">
-            <div><dt>Hora</dt><dd>${best.timeLabel}</dd></div>
-            <div><dt>Objetivo</dt><dd>${best.recommendationLabel}</dd></div>
-            <div><dt>Familia</dt><dd>${best.recommendationFamily}</dd></div>
-            <div><dt>Marea</dt><dd>${best.tideState}</dd></div>
-            <div><dt>Coeficiente</dt><dd>${best.coefficientType}</dd></div>
-            <div><dt>Viento</dt><dd>${formatNumber(best.windWorst, 1, " kn")}</dd></div>
-            <div><dt>Mar</dt><dd>${formatNumber(best.waveHeight, 2, " m")} · ${formatNumber(best.wavePeriod, 1, " s")}</dd></div>
-            <div><dt>Marea anterior</dt><dd>${renderTideTurn(best.tidePrevious)}</dd></div>
-            <div><dt>Marea siguiente</dt><dd>${renderTideTurn(best.tideNext)}</dd></div>
+            <div><dt>Franja</dt><dd>${bestDaySlot ? bestDaySlot.label : best.timeLabel}</dd></div>
+            <div><dt>Prob. acierto</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.confidence : best.confidence, 0, "%")}</dd></div>
+            <div><dt>Prob. pesca</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.fishingScore : best.fishingScore, 0, "/100")}</dd></div>
+            <div><dt>Marea</dt><dd>${bestDaySlot ? bestDaySlot.tideState : best.tideState}</dd></div>
+            <div><dt>Coeficiente</dt><dd>${bestDaySlot ? bestDaySlot.coefficientType : best.coefficientType}</dd></div>
+            <div><dt>Viento</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.windWorst : best.windWorst, 1, " kn")}</dd></div>
+            <div><dt>Rachas</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.gustWorst : best.gustWorst, 1, " kn")}</dd></div>
+            <div><dt>Mar</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.waveHeight : best.waveHeight, 2, " m")} · ${formatNumber(bestDaySlot ? bestDaySlot.wavePeriod : best.wavePeriod, 1, " s")}</dd></div>
+            <div><dt>Marea anterior</dt><dd>${renderTideTurn(bestDaySlot ? bestDaySlot.tidePrevious : best.tidePrevious)}</dd></div>
+            <div><dt>Marea siguiente</dt><dd>${renderTideTurn(bestDaySlot ? bestDaySlot.tideNext : best.tideNext)}</dd></div>
           </dl>
         </article>
       </section>
 
       <section class="donpesca-grid donpesca-grid--three">
         <article class="donpesca-card">
-          <h3>Recomendación de pesca</h3>
-          <p><strong>${best.recommendationLabel}</strong> · ${best.recommendationFamily}</p>
-          <p>${best.recommendationReason}</p>
+          <h3>Mejor momento para pescar</h3>
+          <p><strong>${bestDaySlot ? bestDaySlot.label : best.timeLabel}</strong></p>
+          <p>${bestDaySlot ? bestDaySlot.reason : "Es la ventana con mejor encaje del día."}</p>
+          <p>${bestDaySlot ? bestDaySlot.reasonDetail : best.reason}</p>
           <p>${fishingFit.reason}</p>
         </article>
         <article class="donpesca-card">
