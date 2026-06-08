@@ -1,0 +1,333 @@
+.donpesca-mar {
+  --ink: #112534;
+  --muted: #5b6f7f;
+  --line: rgba(17, 37, 52, 0.12);
+  --sea: #0a7ea4;
+  --sea-deep: #09324a;
+  --sand: #f4ecda;
+  --foam: #fbfcf7;
+  --good: #2b8a5f;
+  --warn: #c68023;
+  --bad: #c2493e;
+  --shadow: 0 24px 70px rgba(6, 35, 53, 0.12);
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.donpesca-mar__shell {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.74), transparent 34%),
+    linear-gradient(145deg, #dbeff1 0%, #f5efe4 38%, #f8faf8 100%);
+  border: 1px solid rgba(8, 54, 75, 0.08);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.donpesca-mar__hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 30px 30px 18px;
+  background:
+    linear-gradient(120deg, rgba(9, 50, 74, 0.95), rgba(10, 126, 164, 0.84)),
+    linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.08));
+  color: #fff;
+}
+
+.donpesca-mar__hero h2,
+.donpesca-card h3,
+.donpesca-card h4 {
+  font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+  letter-spacing: -0.02em;
+}
+
+.donpesca-mar__hero h2 {
+  margin: 8px 0 10px;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 0.95;
+}
+
+.donpesca-mar__eyebrow,
+.donpesca-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.72rem;
+  opacity: 0.82;
+}
+
+.donpesca-mar__badge-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-content: flex-start;
+  justify-content: flex-end;
+}
+
+.donpesca-mar__badge,
+.donpesca-pill,
+.donpesca-chip {
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.donpesca-mar__badge {
+  background: rgba(255, 255, 255, 0.14);
+  padding: 10px 14px;
+  font-size: 0.82rem;
+}
+
+.donpesca-mar__badge--ghost {
+  background: rgba(6, 22, 30, 0.16);
+}
+
+.donpesca-mar__form {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 22px 30px 26px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.donpesca-mar__field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.donpesca-mar__field label {
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.donpesca-mar__field input,
+.donpesca-mar__field select {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(6, 50, 72, 0.16);
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  padding: 13px 14px;
+  min-height: 48px;
+}
+
+.donpesca-mar__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.donpesca-mar__actions button {
+  border: 0;
+  border-radius: 999px;
+  padding: 13px 22px;
+  background: linear-gradient(120deg, #b57f2f, #d9aa54);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 16px 40px rgba(181, 127, 47, 0.22);
+}
+
+.donpesca-mar__status,
+.donpesca-mar__results {
+  padding: 0 30px 30px;
+}
+
+.donpesca-mar__status {
+  padding-top: 22px;
+  font-size: 0.95rem;
+  color: var(--sea-deep);
+}
+
+.donpesca-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.donpesca-grid--hero {
+  grid-template-columns: 1.6fr 1fr;
+  margin-bottom: 18px;
+}
+
+.donpesca-grid--three,
+.donpesca-grid--astro {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.donpesca-grid--windows {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.donpesca-card {
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(7, 48, 69, 0.08);
+  box-shadow: 0 18px 50px rgba(10, 35, 43, 0.08);
+  padding: 22px;
+}
+
+.donpesca-card--feature {
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.16), transparent 36%),
+    linear-gradient(140deg, #0f3850, #16698c);
+  color: #fff;
+}
+
+.donpesca-card--verde {
+  border-color: rgba(43, 138, 95, 0.22);
+}
+
+.donpesca-card--amarillo {
+  border-color: rgba(198, 128, 35, 0.22);
+}
+
+.donpesca-card--rojo {
+  border-color: rgba(194, 73, 62, 0.22);
+}
+
+.donpesca-card__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.donpesca-pill {
+  padding: 9px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.donpesca-pill--verde {
+  background: rgba(43, 138, 95, 0.14);
+  color: var(--good);
+}
+
+.donpesca-pill--amarillo {
+  background: rgba(198, 128, 35, 0.14);
+  color: var(--warn);
+}
+
+.donpesca-pill--rojo {
+  background: rgba(194, 73, 62, 0.14);
+  color: var(--bad);
+}
+
+.donpesca-scoreboard,
+.donpesca-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.donpesca-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.donpesca-scoreboard div,
+.donpesca-metrics div {
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.donpesca-card:not(.donpesca-card--feature) .donpesca-metrics div {
+  background: rgba(10, 126, 164, 0.06);
+}
+
+.donpesca-scoreboard strong,
+.donpesca-metrics strong {
+  display: block;
+  font-size: 1.5rem;
+  margin-bottom: 6px;
+}
+
+.donpesca-list {
+  display: grid;
+  gap: 10px;
+}
+
+.donpesca-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.donpesca-list dt {
+  color: var(--muted);
+}
+
+.donpesca-list dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 700;
+}
+
+.donpesca-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.donpesca-chip {
+  padding: 8px 11px;
+  font-size: 0.78rem;
+  background: rgba(9, 50, 74, 0.08);
+  color: var(--sea-deep);
+}
+
+.donpesca-section {
+  margin-top: 14px;
+}
+
+.donpesca-section__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 14px;
+}
+
+.donpesca-copy,
+.donpesca-summary p,
+.donpesca-card p {
+  color: inherit;
+  opacity: 0.92;
+}
+
+.donpesca-mar--locked,
+.donpesca-mar__lock {
+  border-radius: 24px;
+}
+
+.donpesca-mar__lock {
+  padding: 30px;
+  background: linear-gradient(145deg, #122b3a, #1d5e78);
+  color: #fff;
+}
+
+@media (max-width: 980px) {
+  .donpesca-mar__hero,
+  .donpesca-mar__actions,
+  .donpesca-section__head,
+  .donpesca-list div {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .donpesca-mar__form,
+  .donpesca-grid--hero,
+  .donpesca-grid--three,
+  .donpesca-grid--windows,
+  .donpesca-grid--astro {
+    grid-template-columns: 1fr;
+  }
+}
