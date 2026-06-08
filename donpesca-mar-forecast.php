@@ -2,8 +2,8 @@
 /**
  * Plugin Name: DonPesca Mar Forecast
  * Plugin URI: https://donpesca.com
- * Description: Informe marino visual para DonPesca con acceso restringido por email, puertos del País Vasco y análisis de ventanas de pesca.
- * Version: 0.1.0
+ * Description: Informe marino visual para DonPesca con acceso configurable, puertos del País Vasco y lectura de pesca para el Cantábrico.
+ * Version: 0.2.0
  * Author: Codex para DonPesca
  * Text Domain: donpesca-mar-forecast
  */
@@ -15,17 +15,18 @@ if (!defined('ABSPATH')) {
 final class DonPesca_Mar_Forecast {
     private const OPTION_ALLOWED_EMAILS = 'donpesca_mar_allowed_emails';
     private const OPTION_CACHE_MINUTES = 'donpesca_mar_cache_minutes';
+    private const OPTION_PUBLIC_ACCESS = 'donpesca_mar_public_access';
     private const AJAX_ACTION = 'donpesca_mar_forecast';
     private const NONCE_ACTION = 'donpesca_mar_nonce';
     private const TIMEZONE = 'Europe/Madrid';
-    private const OPEN_METEO_FORECAST = 'https://api.open-meteo.com/v1/forecast';
     private const OPEN_METEO_GFS = 'https://api.open-meteo.com/v1/gfs';
     private const OPEN_METEO_ECMWF = 'https://api.open-meteo.com/v1/ecmwf';
     private const OPEN_METEO_METEOFRANCE = 'https://api.open-meteo.com/v1/meteofrance';
     private const OPEN_METEO_MARINE = 'https://marine-api.open-meteo.com/v1/marine';
     private const MET_SUN_URL = 'https://api.met.no/weatherapi/sunrise/3.0/sun';
     private const MET_MOON_URL = 'https://api.met.no/weatherapi/sunrise/3.0/moon';
-    private const USER_AGENT = 'DonPescaMarForecast/0.1 (+https://donpesca.com)';
+    private const USER_AGENT = 'DonPescaMarForecast/0.2 (+https://donpesca.com)';
+    private const MAX_PUBLIC_DAYS = 7;
 
     private static ?DonPesca_Mar_Forecast $instance = null;
 
@@ -43,6 +44,7 @@ final class DonPesca_Mar_Forecast {
         add_action('admin_menu', [$this, 'register_admin_page']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_ajax_' . self::AJAX_ACTION, [$this, 'handle_ajax_forecast']);
+        add_action('wp_ajax_nopriv_' . self::AJAX_ACTION, [$this, 'handle_ajax_forecast']);
     }
 
     public function register_shortcode(): void {
@@ -56,14 +58,14 @@ final class DonPesca_Mar_Forecast {
             'donpesca-mar-forecast',
             $base_url . 'style.css',
             [],
-            '0.1.0'
+            '0.2.0'
         );
 
         wp_register_script(
             'donpesca-mar-forecast',
             $base_url . 'app.js',
             [],
-            '0.1.0',
+            '0.2.0',
             true
         );
     }
@@ -101,6 +103,18 @@ final class DonPesca_Mar_Forecast {
                 'default' => 20,
             ]
         );
+
+        register_setting(
+            'donpesca_mar_settings',
+            self::OPTION_PUBLIC_ACCESS,
+            [
+                'type' => 'boolean',
+                'sanitize_callback' => static function ($value): int {
+                    return !empty($value) ? 1 : 0;
+                },
+                'default' => 0,
+            ]
+        );
     }
 
     public function sanitize_allowed_emails($value): string {
@@ -114,9 +128,7 @@ final class DonPesca_Mar_Forecast {
             }
         }
 
-        $emails = array_values(array_unique($emails));
-
-        return implode("\n", $emails);
+        return implode("\n", array_values(array_unique($emails)));
     }
 
     public function render_admin_page(): void {
@@ -128,15 +140,25 @@ final class DonPesca_Mar_Forecast {
         ?>
         <div class="wrap">
             <h1>DonPesca Mar Forecast</h1>
-            <p>Configura qué usuarios pueden ver el parte y el tiempo de caché de las consultas externas.</p>
+            <p>Configura acceso, caché y uso del shortcode en donpesca.com.</p>
             <form method="post" action="options.php">
                 <?php settings_fields('donpesca_mar_settings'); ?>
                 <table class="form-table" role="presentation">
                     <tr>
+                        <th scope="row">Acceso público</th>
+                        <td>
+                            <label for="donpesca_mar_public_access">
+                                <input id="donpesca_mar_public_access" type="checkbox" name="<?php echo esc_attr(self::OPTION_PUBLIC_ACCESS); ?>" value="1" <?php checked((bool) get_option(self::OPTION_PUBLIC_ACCESS, 0)); ?>>
+                                Abrir el informe a cualquier visitante, incluso sin login.
+                            </label>
+                            <p class="description">Si no está marcado, solo podrán entrar usuarios logados cuyo email figure en la lista blanca.</p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><label for="donpesca_mar_allowed_emails">Emails autorizados</label></th>
                         <td>
                             <textarea id="donpesca_mar_allowed_emails" name="<?php echo esc_attr(self::OPTION_ALLOWED_EMAILS); ?>" rows="10" cols="50" class="large-text code"><?php echo esc_textarea((string) get_option(self::OPTION_ALLOWED_EMAILS, '')); ?></textarea>
-                            <p class="description">Un email por línea. Solo usuarios logados con uno de estos correos verán el informe.</p>
+                            <p class="description">Un email por línea. Solo se usa cuando el acceso público está desactivado.</p>
                         </td>
                     </tr>
                     <tr>
@@ -151,7 +173,6 @@ final class DonPesca_Mar_Forecast {
             </form>
 
             <h2>Shortcode</h2>
-            <p>Inserta esto en la página privada de donpesca.com:</p>
             <code>[donpesca_mar_report]</code>
 
             <h2>Puertos incluidos</h2>
@@ -161,7 +182,7 @@ final class DonPesca_Mar_Forecast {
     }
 
     public function render_shortcode(): string {
-        if (!$this->user_is_allowed()) {
+        if (!$this->visitor_is_allowed()) {
             return $this->render_gate_message();
         }
 
@@ -171,6 +192,7 @@ final class DonPesca_Mar_Forecast {
         $ports = self::ports_catalog();
         $default_port = isset($ports['Zumaia']) ? 'Zumaia' : array_key_first($ports);
         $default_when = wp_date('Y-m-d\TH:i', time(), wp_timezone());
+        $access_mode = $this->public_access_enabled() ? 'publico' : 'privado';
 
         wp_localize_script(
             'donpesca-mar-forecast',
@@ -195,11 +217,11 @@ final class DonPesca_Mar_Forecast {
                     <div>
                         <span class="donpesca-mar__eyebrow">DonPesca Marine Desk</span>
                         <h2>Parte de mar y pesca para tu zona</h2>
-                        <p>Análisis visual de mar, viento, mareas, luna y ventanas de pesca con criterio conservador y lectura de consenso entre modelos.</p>
+                        <p>Análisis visual de mar, viento, mareas, luna y ventanas de pesca con criterio prudente y lectura específica del Cantábrico.</p>
                     </div>
                     <div class="donpesca-mar__badge-stack">
-                        <span class="donpesca-mar__badge">Acceso privado</span>
-                        <span class="donpesca-mar__badge donpesca-mar__badge--ghost">48 h de foco útil</span>
+                        <span class="donpesca-mar__badge"><?php echo $access_mode === 'publico' ? 'Acceso abierto' : 'Acceso privado'; ?></span>
+                        <span class="donpesca-mar__badge donpesca-mar__badge--ghost">Consulta hasta 7 días</span>
                     </div>
                 </header>
 
@@ -226,7 +248,7 @@ final class DonPesca_Mar_Forecast {
                     </div>
                     <div class="donpesca-mar__actions">
                         <button type="submit">Generar informe</button>
-                        <p>Si rellenas coordenadas, tendrán prioridad sobre el puerto.</p>
+                        <p>Si rellenas coordenadas, tendrán prioridad sobre el puerto. A una semana la lectura se muestra como tendencia, no como parte fino.</p>
                     </div>
                 </form>
 
@@ -240,13 +262,13 @@ final class DonPesca_Mar_Forecast {
     }
 
     private function render_gate_message(): string {
-        return '<section class="donpesca-mar donpesca-mar--locked"><div class="donpesca-mar__lock"><h3>Acceso restringido</h3><p>Este informe solo está disponible para usuarios autorizados por email dentro de donpesca.com.</p></div></section>';
+        return '<section class="donpesca-mar donpesca-mar--locked"><div class="donpesca-mar__lock"><h3>Acceso restringido</h3><p>Este informe solo está disponible para usuarios autorizados o, si activas la opción, para todo el público.</p></div></section>';
     }
 
     public function handle_ajax_forecast(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
 
-        if (!$this->user_is_allowed()) {
+        if (!$this->visitor_is_allowed()) {
             wp_send_json_error(['message' => 'No autorizado.'], 403);
         }
 
@@ -261,25 +283,26 @@ final class DonPesca_Mar_Forecast {
             $payload = $this->build_forecast_payload($location, $reference);
             wp_send_json_success($payload);
         } catch (Throwable $exception) {
-            wp_send_json_error(
-                [
-                    'message' => $exception->getMessage(),
-                ],
-                500
-            );
+            wp_send_json_error(['message' => $exception->getMessage()], 500);
         }
     }
 
-    private function user_is_allowed(): bool {
+    private function visitor_is_allowed(): bool {
+        if ($this->public_access_enabled()) {
+            return true;
+        }
+
         if (!is_user_logged_in()) {
             return false;
         }
 
         $current_user = wp_get_current_user();
         $email = strtolower((string) $current_user->user_email);
-        $allowed = $this->allowed_emails();
+        return $email !== '' && in_array($email, $this->allowed_emails(), true);
+    }
 
-        return $email !== '' && in_array($email, $allowed, true);
+    private function public_access_enabled(): bool {
+        return (bool) get_option(self::OPTION_PUBLIC_ACCESS, 0);
     }
 
     private function allowed_emails(): array {
@@ -320,13 +343,13 @@ final class DonPesca_Mar_Forecast {
     }
 
     private function parse_reference_datetime(string $raw): DateTimeImmutable {
+        $timezone = new DateTimeZone(self::TIMEZONE);
+
         if ($raw === '') {
-            return new DateTimeImmutable('now', new DateTimeZone(self::TIMEZONE));
+            return new DateTimeImmutable('now', $timezone);
         }
 
-        $timezone = new DateTimeZone(self::TIMEZONE);
         $date = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $raw, $timezone);
-
         if (!$date instanceof DateTimeImmutable) {
             throw new RuntimeException('La fecha de referencia no tiene un formato válido.');
         }
@@ -335,20 +358,22 @@ final class DonPesca_Mar_Forecast {
     }
 
     private function build_forecast_payload(array $location, DateTimeImmutable $reference): array {
-        $weather_models = $this->fetch_weather_models($location, $reference);
-        $marine = $this->fetch_marine_forecast($location, $reference);
-        $astronomy = $this->fetch_astronomy($location, $reference);
-        $windows = $this->build_windows($weather_models, $marine, $astronomy, $reference);
+        $now = new DateTimeImmutable('now', new DateTimeZone(self::TIMEZONE));
+        $requested_span_days = $this->days_to_cover($now, $reference);
+        $weather_models = $this->fetch_weather_models($location, $requested_span_days);
+        $marine = $this->fetch_marine_forecast($location, $requested_span_days);
+        $astronomy = $this->fetch_astronomy($location, $now, $requested_span_days);
+        $windows = $this->build_windows($weather_models, $marine, $astronomy, $now, $reference);
 
         if ($windows === []) {
-            throw new RuntimeException('No se han encontrado datos suficientes para construir ventanas útiles.');
+            throw new RuntimeException('No hay datos útiles para esa fecha. El límite práctico actual es 7 días vista.');
         }
 
         $best_window = $windows[0];
         $tide_turns = $this->find_tide_turns($marine['times'], $marine['sea_level']);
         $tide_context = $this->tide_context($reference, $tide_turns);
         $fishing_fit = $this->classify_fishing_fit($best_window);
-        $summary = $this->build_executive_summary($best_window, $fishing_fit);
+        $summary = $this->build_executive_summary($best_window, $fishing_fit, $reference, $now);
 
         return [
             'generatedAt' => wp_date('c', time(), wp_timezone()),
@@ -356,55 +381,70 @@ final class DonPesca_Mar_Forecast {
             'location' => $location,
             'summary' => $summary,
             'bestWindow' => $best_window,
-            'windows' => array_slice($windows, 0, 6),
+            'windows' => array_slice($windows, 0, 8),
             'astronomy' => $astronomy,
             'tides' => [
                 'currentLevel' => $this->current_series_value($reference, $marine['times'], $marine['sea_level']),
                 'previousTurn' => $tide_context['previous'],
                 'nextTurn' => $tide_context['next'],
-                'turns' => array_slice($tide_turns, 0, 8),
-                'disclaimer' => 'La marea es una estimación modelizada de Open-Meteo. Úsala como apoyo, no como sustituto del anuario ni del parte portuario.',
+                'turns' => array_slice($tide_turns, 0, 12),
+                'disclaimer' => 'La marea es una estimación modelizada de Open-Meteo Marine. Es apoyo visual, no sustituto del anuario ni del parte del puerto.',
             ],
             'consensus' => [
                 'windModels' => $weather_models['meta'],
-                'confidenceFormula' => 'La confianza baja cuando divergen AROME/ARPEGE, ECMWF y GFS o cuando el horizonte temporal se aleja.',
+                'confidenceFormula' => 'La probabilidad de acierto cae cuando discrepan ECMWF/GFS/Météo-France y cae todavía más al alejarse hacia 5-7 días.',
             ],
             'notes' => [
-                'Se aplica una lectura prudente: para decidir salida se pondera el escenario más duro de viento y rachas.',
-                'La ventana operativa principal es 24-48 horas; más allá debe interpretarse como tendencia.',
-                'El mar con periodo largo y dirección 310-320° penaliza la seguridad en costa aunque la altura no parezca extrema.',
+                'El score de pesca ya no premia casi todo: exige más encaje entre mar, momento de marea, fase lunar y tipo de especie.',
+                'A 24-48 horas el parte sirve para decidir con más rigor. A una semana se interpreta como tendencia.',
+                'Las reglas de especies están adaptadas al Cantábrico: lubina, espáridos, pelágicos, fondo y cefalópodos no buscan la misma mar.',
             ],
         ];
     }
 
-    private function fetch_weather_models(array $location, DateTimeImmutable $reference): array {
+    private function days_to_cover(DateTimeImmutable $now, DateTimeImmutable $reference): int {
+        $hours = max(0.0, ($reference->getTimestamp() - $now->getTimestamp()) / HOUR_IN_SECONDS);
+        $days = (int) ceil($hours / 24) + 2;
+        return max(3, min(self::MAX_PUBLIC_DAYS, $days));
+    }
+
+    private function fetch_weather_models(array $location, int $requested_days): array {
         $hourly = ['wind_speed_10m', 'wind_gusts_10m', 'wind_direction_10m'];
-        $forecast_days = 4;
-        $params = [
+        $common = [
             'latitude' => $location['latitude'],
             'longitude' => $location['longitude'],
             'hourly' => implode(',', $hourly),
             'wind_speed_unit' => 'kn',
             'timezone' => self::TIMEZONE,
-            'forecast_days' => $forecast_days,
+            'cell_selection' => 'sea',
         ];
 
         $endpoints = [
-            'Meteo-France' => self::OPEN_METEO_METEOFRANCE,
-            'ECMWF' => self::OPEN_METEO_ECMWF,
-            'GFS' => self::OPEN_METEO_GFS,
+            'Meteo-France' => [
+                'url' => self::OPEN_METEO_METEOFRANCE,
+                'forecast_days' => min(4, $requested_days),
+            ],
+            'ECMWF' => [
+                'url' => self::OPEN_METEO_ECMWF,
+                'forecast_days' => $requested_days,
+            ],
+            'GFS' => [
+                'url' => self::OPEN_METEO_GFS,
+                'forecast_days' => $requested_days,
+            ],
         ];
 
         $series = [];
         $meta = [];
 
-        foreach ($endpoints as $label => $endpoint) {
-            $data = $this->cached_json_request($endpoint, $params, 'weather');
+        foreach ($endpoints as $label => $config) {
+            $params = $common;
+            $params['forecast_days'] = $config['forecast_days'];
+            $data = $this->cached_json_request($config['url'], $params, 'weather');
             $hourly_data = $data['hourly'] ?? [];
-            $times = $hourly_data['time'] ?? [];
 
             $series[$label] = [
-                'time' => $times,
+                'time' => $hourly_data['time'] ?? [],
                 'wind' => $hourly_data['wind_speed_10m'] ?? [],
                 'gust' => $hourly_data['wind_gusts_10m'] ?? [],
                 'direction' => $hourly_data['wind_direction_10m'] ?? [],
@@ -412,19 +452,18 @@ final class DonPesca_Mar_Forecast {
 
             $meta[] = [
                 'name' => $label,
-                'forecastDays' => $forecast_days,
-                'samples' => is_array($times) ? count($times) : 0,
+                'forecastDays' => $config['forecast_days'],
+                'samples' => is_array($hourly_data['time'] ?? null) ? count($hourly_data['time']) : 0,
             ];
         }
 
         return [
             'series' => $series,
             'meta' => $meta,
-            'reference' => $reference->format(DateTimeInterface::ATOM),
         ];
     }
 
-    private function fetch_marine_forecast(array $location, DateTimeImmutable $reference): array {
+    private function fetch_marine_forecast(array $location, int $requested_days): array {
         $params = [
             'latitude' => $location['latitude'],
             'longitude' => $location['longitude'],
@@ -437,7 +476,8 @@ final class DonPesca_Mar_Forecast {
                 'sea_level_height_msl',
             ]),
             'timezone' => self::TIMEZONE,
-            'forecast_days' => 4,
+            'forecast_days' => min(8, max(4, $requested_days + 1)),
+            'cell_selection' => 'sea',
         ];
 
         $data = $this->cached_json_request(self::OPEN_METEO_MARINE, $params, 'marine');
@@ -451,63 +491,65 @@ final class DonPesca_Mar_Forecast {
             'swell_wave_height' => $hourly['swell_wave_height'] ?? [],
             'wind_wave_height' => $hourly['wind_wave_height'] ?? [],
             'sea_level' => $hourly['sea_level_height_msl'] ?? [],
-            'reference' => $reference->format(DateTimeInterface::ATOM),
         ];
     }
 
-    private function fetch_astronomy(array $location, DateTimeImmutable $reference): array {
-        $days = [];
+    private function fetch_astronomy(array $location, DateTimeImmutable $start, int $days): array {
+        $items = [];
 
-        for ($offset = 0; $offset < 3; $offset++) {
-            $day = $reference->setTime(12, 0)->modify('+' . $offset . ' day');
+        for ($offset = 0; $offset < $days; $offset++) {
+            $day = $start->setTime(12, 0)->modify('+' . $offset . ' day');
             $date = $day->format('Y-m-d');
-            $offset_string = $day->format('P');
-            $base_params = [
+            $params = [
                 'lat' => $location['latitude'],
                 'lon' => $location['longitude'],
                 'date' => $date,
-                'offset' => $offset_string,
+                'offset' => $day->format('P'),
             ];
 
-            $sun = $this->cached_json_request(self::MET_SUN_URL, $base_params, 'sun');
-            $moon = $this->cached_json_request(self::MET_MOON_URL, $base_params, 'moon');
+            $sun = $this->cached_json_request(self::MET_SUN_URL, $params, 'sun');
+            $moon = $this->cached_json_request(self::MET_MOON_URL, $params, 'moon');
             $sun_props = $sun['properties'] ?? [];
             $moon_props = $moon['properties'] ?? [];
             $moon_phase = $moon_props['moonphase'] ?? null;
             $moon_value = is_array($moon_phase) ? ($moon_phase['value'] ?? null) : $moon_phase;
 
-            $days[] = [
+            $items[] = [
                 'date' => $date,
                 'sunrise' => $this->extract_iso_time($sun_props['sunrise']['time'] ?? null),
                 'sunset' => $this->extract_iso_time($sun_props['sunset']['time'] ?? null),
                 'moonrise' => $this->extract_iso_time($moon_props['moonrise']['time'] ?? null),
                 'moonset' => $this->extract_iso_time($moon_props['moonset']['time'] ?? null),
-                'moonPhaseValue' => $moon_value,
+                'moonPhaseValue' => is_numeric($moon_value) ? (float) $moon_value : null,
                 'moonPhaseLabel' => $this->moon_phase_label($moon_value),
                 'moonFishingNote' => $this->moon_fishing_note($moon_value),
             ];
         }
 
-        return $days;
+        return $items;
     }
 
-    private function build_windows(array $weather_models, array $marine, array $astronomy, DateTimeImmutable $reference): array {
+    private function build_windows(array $weather_models, array $marine, array $astronomy, DateTimeImmutable $now, DateTimeImmutable $reference): array {
         $times = $marine['times'];
-        $windows = [];
         $tide_turns = $this->find_tide_turns($marine['times'], $marine['sea_level']);
+        $window_start = $reference->setTime((int) $reference->format('H'), 0)->modify('-12 hours');
+        $window_end = $reference->modify('+36 hours');
+        $results = [];
 
         foreach ($times as $index => $iso_time) {
             $time = new DateTimeImmutable($iso_time, new DateTimeZone(self::TIMEZONE));
-            $hours_ahead = ($time->getTimestamp() - $reference->getTimestamp()) / 3600;
+            if ($time < $window_start || $time > $window_end) {
+                continue;
+            }
 
-            if ($hours_ahead < 0 || $hours_ahead > 48) {
+            $hours_ahead = ($time->getTimestamp() - $now->getTimestamp()) / HOUR_IN_SECONDS;
+            if ($hours_ahead < -3 || $hours_ahead > self::MAX_PUBLIC_DAYS * 24) {
                 continue;
             }
 
             $wind_samples = $this->collect_model_values($weather_models['series'], $iso_time, 'wind');
             $gust_samples = $this->collect_model_values($weather_models['series'], $iso_time, 'gust');
             $direction_samples = $this->collect_model_values($weather_models['series'], $iso_time, 'direction');
-
             if ($wind_samples === [] || $gust_samples === []) {
                 continue;
             }
@@ -519,27 +561,45 @@ final class DonPesca_Mar_Forecast {
             $astronomy_day = $this->astronomy_for_day($astronomy, $time->format('Y-m-d'));
             $consensus = $this->confidence_score($wind_samples, $gust_samples, $hours_ahead);
             $energy = $this->wave_energy($wave_height, $wave_period);
-            $danger_dir = $this->direction_penalty($wave_direction);
-            $worst_wind = max($wind_samples);
-            $worst_gust = max($gust_samples);
-            $avg_wind = $this->average($wind_samples);
-            $avg_gust = $this->average($gust_samples);
-            $avg_direction = $this->average($direction_samples);
             $tide_context = $this->tide_context($time, $tide_turns);
-            $fishing_score = $this->fishing_window_score(
+            $tide_state = $this->tide_state($time, $tide_context);
+            $coeff_type = $this->tidal_coefficient_type($astronomy_day['moonPhaseValue'] ?? null);
+            $target = $this->best_target_family(
                 $time,
-                $worst_wind,
-                $worst_gust,
                 $wave_height,
                 $wave_period,
                 $energy,
                 $consensus,
                 $astronomy_day,
-                $tide_context
+                $tide_context,
+                $tide_state,
+                $coeff_type
             );
-            $sea_state = $this->classify_sea_state($worst_wind, $worst_gust, $wave_height, $energy, $danger_dir, $consensus);
+            $worst_wind = max($wind_samples);
+            $worst_gust = max($gust_samples);
+            $avg_direction = $this->average($direction_samples);
+            $direction_penalty = $this->direction_penalty($wave_direction);
+            $fishing_score = $this->fishing_window_score(
+                $target['score'],
+                $consensus,
+                $hours_ahead,
+                $worst_wind,
+                $worst_gust,
+                $wave_height,
+                $energy,
+                $tide_state
+            );
+            $sea_state = $this->classify_sea_state(
+                $worst_wind,
+                $worst_gust,
+                $wave_height,
+                $energy,
+                $direction_penalty,
+                $consensus,
+                $hours_ahead
+            );
 
-            $windows[] = [
+            $results[] = [
                 'time' => $time->format(DateTimeInterface::ATOM),
                 'timeLabel' => wp_date('D j M H:i', $time->getTimestamp(), wp_timezone()),
                 'hoursAhead' => round($hours_ahead, 1),
@@ -548,10 +608,13 @@ final class DonPesca_Mar_Forecast {
                 'reason' => $sea_state['reason'],
                 'confidence' => $consensus,
                 'fishingScore' => $fishing_score,
+                'recommendationLabel' => $target['label'],
+                'recommendationFamily' => $target['family'],
+                'recommendationReason' => $target['reason'],
+                'tideState' => $tide_state,
+                'coefficientType' => $coeff_type,
                 'windWorst' => round($worst_wind, 1),
-                'windAvg' => round($avg_wind, 1),
                 'gustWorst' => round($worst_gust, 1),
-                'gustAvg' => round($avg_gust, 1),
                 'windDirection' => $avg_direction !== null ? round($avg_direction) : null,
                 'waveHeight' => $wave_height,
                 'wavePeriod' => $wave_period,
@@ -574,31 +637,33 @@ final class DonPesca_Mar_Forecast {
         }
 
         usort(
-            $windows,
+            $results,
             static function (array $a, array $b): int {
                 return ($b['fishingScore'] <=> $a['fishingScore']) ?: ($b['confidence'] <=> $a['confidence']);
             }
         );
 
-        return $this->deduplicate_windows($windows);
+        return $this->deduplicate_windows($results);
     }
 
-    private function build_executive_summary(array $window, array $fishing_fit): array {
+    private function build_executive_summary(array $window, array $fishing_fit, DateTimeImmutable $reference, DateTimeImmutable $now): array {
+        $days_ahead = max(0, floor(($reference->getTimestamp() - $now->getTimestamp()) / DAY_IN_SECONDS));
         $texts = [];
-        $texts[] = $window['status'] === 'VERDE'
-            ? 'Ventana razonable para salir si el parte real de última hora confirma.'
-            : ($window['status'] === 'AMARILLO'
-                ? 'Hay opción, pero con margen corto y necesidad de validar in situ.'
-                : 'No es una ventana limpia; pesa más el criterio de seguridad que el de pesca.');
 
-        if ($window['confidence'] < 60) {
-            $texts[] = 'Los modelos no convergen bien, así que la probabilidad de acierto baja.';
+        $texts[] = $window['status'] === 'VERDE'
+            ? 'Ventana razonable para revisar salida si el parte corto plazo no empeora.'
+            : ($window['status'] === 'AMARILLO'
+                ? 'Hay opción, pero con varios matices y necesidad de confirmar sobre la marcha.'
+                : 'No es una ventana limpia para forzar una salida.');
+
+        $texts[] = $window['recommendationReason'];
+
+        if ($days_ahead >= 5) {
+            $texts[] = 'Esta consulta entra en zona de tendencia. Sirve para orientarte, no para tomarla como parte definitivo.';
+        } elseif ($window['confidence'] < 60) {
+            $texts[] = 'La coincidencia entre modelos es floja y la probabilidad de acierto cae.';
         } else {
             $texts[] = 'La coincidencia entre modelos es aceptable para trabajar esta ventana.';
-        }
-
-        if ($window['waveEnergy'] !== null && $window['waveEnergy'] >= 22) {
-            $texts[] = 'Aunque la ola no parezca enorme, el periodo le mete energía y endurece el mar.';
         }
 
         return [
@@ -613,23 +678,25 @@ final class DonPesca_Mar_Forecast {
     private function classify_fishing_fit(array $window): array {
         $score = (float) $window['fishingScore'];
         $label = 'Flojo';
-        $reason = 'La combinación entre mar, viento y momento biológico no destaca.';
+        $reason = 'No hay suficiente encaje entre seguridad, biología y momento de marea.';
 
-        if ($score >= 78) {
-            $label = 'Muy buena';
-            $reason = 'Cuadra bastante bien seguridad, actividad potencial y confianza del parte.';
-        } elseif ($score >= 62) {
+        if ($score >= 74) {
+            $label = 'Muy interesante';
+            $reason = 'Encaja bien para la familia objetivo y no depende de forzar demasiado la situación.';
+        } elseif ($score >= 60) {
             $label = 'Interesante';
-            $reason = 'Puede encajar para pescar si ajustas zona y táctica.';
-        } elseif ($score >= 45) {
+            $reason = 'Tiene sentido, pero con selección fina de zona, táctica y duración de la salida.';
+        } elseif ($score >= 46) {
             $label = 'Justa';
-            $reason = 'Solo compensa si buscas una salida corta y muy controlada.';
+            $reason = 'Solo compensa si buscas una oportunidad concreta y muy controlada.';
         }
 
         return [
             'score' => round($score, 1),
             'label' => $label,
             'reason' => $reason,
+            'targetFamily' => $window['recommendationFamily'],
+            'targetLabel' => $window['recommendationLabel'],
         ];
     }
 
@@ -679,68 +746,226 @@ final class DonPesca_Mar_Forecast {
             break;
         }
 
-        return [
-            'previous' => $previous,
-            'next' => $next,
-        ];
+        return ['previous' => $previous, 'next' => $next];
     }
 
-    private function fishing_window_score(
+    private function tide_state(DateTimeImmutable $time, array $tide_context): string {
+        $previous = $tide_context['previous'] ?? null;
+        $next = $tide_context['next'] ?? null;
+
+        if (!$previous || !$next) {
+            return 'indefinida';
+        }
+
+        $previous_time = new DateTimeImmutable($previous['time']);
+        $next_time = new DateTimeImmutable($next['time']);
+        $minutes_to_prev = abs($time->getTimestamp() - $previous_time->getTimestamp()) / 60;
+        $minutes_to_next = abs($time->getTimestamp() - $next_time->getTimestamp()) / 60;
+
+        if ($minutes_to_prev <= 60 || $minutes_to_next <= 60) {
+            return 'rebase';
+        }
+
+        if (($previous['kind'] ?? '') === 'bajamar' && ($next['kind'] ?? '') === 'pleamar') {
+            return 'subiendo';
+        }
+
+        if (($previous['kind'] ?? '') === 'pleamar' && ($next['kind'] ?? '') === 'bajamar') {
+            return 'bajando';
+        }
+
+        return 'indefinida';
+    }
+
+    private function tidal_coefficient_type(?float $moon_phase): string {
+        if ($moon_phase === null) {
+            return 'medio';
+        }
+
+        if ($moon_phase <= 25 || $moon_phase >= 335 || ($moon_phase >= 155 && $moon_phase <= 205)) {
+            return 'vivas';
+        }
+
+        if (($moon_phase >= 70 && $moon_phase <= 110) || ($moon_phase >= 250 && $moon_phase <= 290)) {
+            return 'muertas';
+        }
+
+        return 'medio';
+    }
+
+    private function best_target_family(
         DateTimeImmutable $time,
-        float $wind,
-        float $gust,
         ?float $wave_height,
         ?float $wave_period,
         ?float $energy,
         int $confidence,
         array $astronomy_day,
-        array $tide_context
+        array $tide_context,
+        string $tide_state,
+        string $coeff_type
+    ): array {
+        $moon_label = $astronomy_day['moonPhaseLabel'] ?? '';
+        $hour = (int) $time->format('H');
+        $is_evening = $hour >= 18 || $hour <= 1;
+        $near_pleamar = (($tide_context['previous']['kind'] ?? '') === 'pleamar' && $tide_state === 'rebase')
+            || (($tide_context['next']['kind'] ?? '') === 'pleamar' && $tide_state === 'rebase');
+        $near_bajamar = (($tide_context['previous']['kind'] ?? '') === 'bajamar' && $tide_state === 'rebase')
+            || (($tide_context['next']['kind'] ?? '') === 'bajamar' && $tide_state === 'rebase');
+
+        $rules = [];
+
+        $lubina = 34.0;
+        if ($wave_height !== null && $wave_height >= 0.8 && $wave_height <= 2.2) {
+            $lubina += 12;
+        }
+        if ($energy !== null && $energy >= 10 && $energy <= 28) {
+            $lubina += 7;
+        }
+        if ($tide_state === 'subiendo') {
+            $lubina += 11;
+        } elseif ($tide_state === 'bajando') {
+            $lubina += 6;
+        }
+        if ($coeff_type === 'vivas') {
+            $lubina += 8;
+        }
+        if ($moon_label === 'Luna nueva' || $moon_label === 'Luna llena') {
+            $lubina += 6;
+        }
+        $rules[] = [
+            'family' => 'Morónidos',
+            'label' => 'Lubina',
+            'score' => $lubina,
+            'reason' => 'La lubina encaja mejor con mar vivo, espuma útil y marea en subida o primer tramo de bajada.',
+        ];
+
+        $sparids = 30.0;
+        if ($coeff_type === 'vivas' && $wave_height !== null && $wave_height >= 0.9) {
+            $sparids += 10;
+        }
+        if ($coeff_type === 'medio' && $near_pleamar) {
+            $sparids += 8;
+        }
+        if ($tide_state === 'subiendo') {
+            $sparids += 7;
+        }
+        if ($coeff_type === 'muertas') {
+            $sparids += 4;
+        }
+        if (in_array($moon_label, ['Creciente', 'Menguante', 'Gibosa menguante', 'Gibosa creciente'], true)) {
+            $sparids += 4;
+        }
+        $rules[] = [
+            'family' => 'Espáridos',
+            'label' => $coeff_type === 'medio' && $near_pleamar ? 'Dorada' : 'Sargo',
+            'score' => $sparids,
+            'reason' => $coeff_type === 'medio' && $near_pleamar
+                ? 'La dorada suele encajar mejor en pleamar y con aguas más ordenadas.'
+                : 'El sargo gana interés con mar batido y marea que va ganando piedra.',
+        ];
+
+        $pelagics = 26.0;
+        if ($tide_state === 'rebase') {
+            $pelagics += 16;
+        }
+        if ($coeff_type === 'medio' || $coeff_type === 'vivas') {
+            $pelagics += 4;
+        }
+        if ($moon_label === 'Luna nueva') {
+            $pelagics += 7;
+        } elseif ($moon_label === 'Luna llena') {
+            $pelagics -= 4;
+        }
+        $rules[] = [
+            'family' => 'Scombridos y carángidos',
+            'label' => 'Verdel, chicharro o bonito',
+            'score' => $pelagics,
+            'reason' => 'Los pelágicos suelen activarse mejor cuando el cambio de marea concentra pasto en puntas y bocanas.',
+        ];
+
+        $bottom = 28.0;
+        if ($coeff_type === 'muertas') {
+            $bottom += 14;
+        }
+        if ($near_bajamar || $tide_state === 'bajando') {
+            $bottom += 9;
+        }
+        if ($wave_height !== null && $wave_height <= 1.0) {
+            $bottom += 8;
+        }
+        if ($wave_period !== null && $wave_period <= 10.0) {
+            $bottom += 4;
+        }
+        $rules[] = [
+            'family' => 'Gádidos y fondo',
+            'label' => 'Faneca, congrio o aligote',
+            'score' => $bottom,
+            'reason' => 'El fondo mejora con menos corriente, agua más limpia y bajamar o marea muerta.',
+        ];
+
+        $cephalopods = 25.0;
+        if ($near_pleamar) {
+            $cephalopods += 12;
+        }
+        if ($is_evening) {
+            $cephalopods += 10;
+        }
+        if ($wave_height !== null && $wave_height <= 1.1) {
+            $cephalopods += 8;
+        }
+        if ($moon_label === 'Luna llena') {
+            $cephalopods += 10;
+        } elseif ($moon_label === 'Luna nueva') {
+            $cephalopods += 5;
+        }
+        $rules[] = [
+            'family' => 'Cefalópodos',
+            'label' => 'Chipirón o calamar',
+            'score' => $cephalopods,
+            'reason' => 'El chipirón suele casar mejor con pleamar, tarde-noche y aguas relativamente limpias.',
+        ];
+
+        foreach ($rules as &$rule) {
+            $rule['score'] += ($confidence - 55) * 0.12;
+            $rule['score'] = max(18.0, min(82.0, round($rule['score'], 1)));
+        }
+        unset($rule);
+
+        usort(
+            $rules,
+            static function (array $a, array $b): int {
+                return $b['score'] <=> $a['score'];
+            }
+        );
+
+        return $rules[0];
+    }
+
+    private function fishing_window_score(
+        float $target_score,
+        int $confidence,
+        float $hours_ahead,
+        float $wind,
+        float $gust,
+        ?float $wave_height,
+        ?float $energy,
+        string $tide_state
     ): float {
-        $score = 100.0;
+        $score = $target_score;
+        $score += max(0, $confidence - 50) * 0.15;
+        $score -= max(0.0, $wind - 10.0) * 2.4;
+        $score -= max(0.0, $gust - 16.0) * 1.2;
+        $score -= max(0.0, ($wave_height ?? 0.0) - 1.3) * 14.0;
+        $score -= max(0.0, ($energy ?? 0.0) - 22.0) * 0.7;
+        $score -= max(0.0, $hours_ahead - 48.0) * 0.12;
 
-        $score -= max(0.0, $wind - 8.0) * 3.6;
-        $score -= max(0.0, $gust - 14.0) * 2.1;
-        $score -= max(0.0, ($wave_height ?? 0.0) - 0.8) * 28.0;
-        $score -= max(0.0, ($energy ?? 0.0) - 12.0) * 1.1;
-        $score += max(0, $confidence - 50) * 0.4;
-
-        if ($wave_period !== null && $wave_period >= 11.0) {
+        if ($tide_state === 'indefinida') {
             $score -= 8.0;
+        } elseif ($tide_state === 'rebase') {
+            $score += 2.0;
         }
 
-        foreach (['sunrise', 'sunset', 'moonrise', 'moonset'] as $event_key) {
-            if (empty($astronomy_day[$event_key])) {
-                continue;
-            }
-            $event = new DateTimeImmutable($astronomy_day[$event_key]);
-            $delta = abs($event->getTimestamp() - $time->getTimestamp()) / 60;
-            if ($delta <= 90) {
-                $score += 10.0;
-                break;
-            }
-        }
-
-        foreach (['previous', 'next'] as $turn_key) {
-            if (empty($tide_context[$turn_key]['time'])) {
-                continue;
-            }
-            $turn = new DateTimeImmutable($tide_context[$turn_key]['time']);
-            $delta = abs($turn->getTimestamp() - $time->getTimestamp()) / 60;
-            if ($delta <= 90) {
-                $score += 12.0;
-                break;
-            }
-        }
-
-        $moon_value = $astronomy_day['moonPhaseValue'] ?? null;
-        if (is_numeric($moon_value)) {
-            $moon = (float) $moon_value;
-            if ($moon <= 25 || $moon >= 335 || ($moon >= 155 && $moon <= 205)) {
-                $score += 6.0;
-            }
-        }
-
-        return max(0.0, min(100.0, round($score, 1)));
+        return max(18.0, min(86.0, round($score, 1)));
     }
 
     private function classify_sea_state(
@@ -749,28 +974,29 @@ final class DonPesca_Mar_Forecast {
         ?float $wave_height,
         ?float $energy,
         int $direction_penalty,
-        int $confidence
+        int $confidence,
+        float $hours_ahead
     ): array {
         $status = 'VERDE';
-        $headline = 'Cuadra bien para revisar salida';
+        $headline = 'Ventana razonable para revisar salida';
         $reasons = [];
 
         if ($wave_height !== null && $wave_height > 1.5) {
             $status = 'AMARILLO';
-            $reasons[] = 'ola ya cerca del límite operativo';
+            $reasons[] = 'ola cerca del límite operativo';
         }
         if ($wind > 15.0 || $gust > 22.0) {
             $status = 'AMARILLO';
-            $reasons[] = 'viento o racha por encima del confort';
+            $reasons[] = 'viento o rachas por encima del confort';
         }
         if (($wave_height !== null && $wave_height > 2.0) || $wind > 19.0 || $gust > 28.0) {
             $status = 'ROJO';
             $headline = 'No es ventana limpia para mar';
-            $reasons[] = 'el peor escenario del viento o mar ya aprieta demasiado';
+            $reasons[] = 'el peor escenario ya aprieta demasiado';
         }
         if ($energy !== null && $energy >= 24.0) {
             $status = $status === 'ROJO' ? 'ROJO' : 'AMARILLO';
-            $reasons[] = 'el periodo mete energía y endurece el impacto';
+            $reasons[] = 'el periodo mete demasiada energía';
         }
         if ($direction_penalty >= 2) {
             $status = $status === 'VERDE' ? 'AMARILLO' : $status;
@@ -778,12 +1004,16 @@ final class DonPesca_Mar_Forecast {
         }
         if ($confidence < 55) {
             $status = $status === 'VERDE' ? 'AMARILLO' : $status;
-            $reasons[] = 'los modelos no coinciden bien';
+            $reasons[] = 'los modelos no convergen bien';
+        }
+        if ($hours_ahead > 96) {
+            $status = $status === 'VERDE' ? 'AMARILLO' : $status;
+            $reasons[] = 'es una ventana lejana y se lee como tendencia';
         }
 
         if ($status === 'VERDE') {
             $headline = 'Ventana razonable para pescar';
-            $reasons[] = 'mar y viento contenidos con coincidencia aceptable';
+            $reasons[] = 'mar y viento contenidos con criterio prudente';
         } elseif ($status === 'AMARILLO') {
             $headline = 'Ventana con matices';
         }
@@ -798,13 +1028,13 @@ final class DonPesca_Mar_Forecast {
     private function confidence_score(array $wind_samples, array $gust_samples, float $hours_ahead): int {
         $spread_wind = max($wind_samples) - min($wind_samples);
         $spread_gust = max($gust_samples) - min($gust_samples);
-        $score = 92;
-        $score -= $hours_ahead * 0.65;
-        $score -= $spread_wind * 3.2;
-        $score -= $spread_gust * 1.6;
-        $score -= (3 - count($wind_samples)) * 8;
+        $score = 88;
+        $score -= max(0.0, $hours_ahead) * 0.42;
+        $score -= $spread_wind * 2.8;
+        $score -= $spread_gust * 1.4;
+        $score -= (3 - count($wind_samples)) * 9;
 
-        return (int) max(25, min(95, round($score)));
+        return (int) max(22, min(92, round($score)));
     }
 
     private function collect_model_values(array $series, string $iso_time, string $field): array {
@@ -1021,16 +1251,16 @@ final class DonPesca_Mar_Forecast {
 
         $phase = (float) $value;
         if ($phase <= 25 || $phase >= 335) {
-            return 'Luna nueva: noches oscuras y mareas vivas; suele ayudar si coincide con cambio de marea.';
+            return 'Luna nueva: mareas vivas, noches oscuras y más interés para lubina, pelágicos en luces y fondo nocturno.';
         }
         if ($phase >= 155 && $phase <= 205) {
-            return 'Luna llena: más luz nocturna y mareas vivas; puede mover actividad en amanecer, anochecer y luna.';
+            return 'Luna llena: mareas vivas y más luz nocturna; suele ayudar mucho en chipirón y calamar.';
         }
         if (($phase >= 70 && $phase <= 110) || ($phase >= 250 && $phase <= 290)) {
-            return 'Cuarto lunar: mareas algo más suaves y actividad menos explosiva.';
+            return 'Cuartos: corrientes más suaves y aguas más limpias, mejor contexto para dorada o pesca de fondo.';
         }
 
-        return 'Fase intermedia: gana peso cuando encaja con cambio de luz y marea.';
+        return 'Fase intermedia: gana valor si coincide con buen cambio de luz o de marea.';
     }
 
     private static function ports_catalog(): array {
