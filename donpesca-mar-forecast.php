@@ -615,10 +615,13 @@ final class DonPesca_Mar_Forecast {
                 'windWorst' => round($worst_wind, 1),
                 'gustWorst' => round($worst_gust, 1),
                 'windDirection' => $avg_direction !== null ? round($avg_direction) : null,
+                'windDirectionLabel' => $this->compass_label($avg_direction),
                 'waveHeight' => $wave_height,
                 'wavePeriod' => $wave_period,
                 'waveDirection' => $wave_direction,
+                'waveDirectionLabel' => $this->compass_label($wave_direction),
                 'waveEnergy' => $energy,
+                'directionImpact' => $this->direction_impact_text($avg_direction, $wave_direction, $wave_period, $wave_height),
                 'seaLevel' => $sea_level,
                 'moonPhase' => $astronomy_day['moonPhaseLabel'] ?? null,
                 'moonFishingNote' => $astronomy_day['moonFishingNote'] ?? null,
@@ -656,6 +659,9 @@ final class DonPesca_Mar_Forecast {
                 : 'No es una ventana limpia para forzar una salida.');
 
         $texts[] = 'La franja destacada se elige por equilibrio entre marea, mar, viento y consistencia del parte.';
+        if (!empty($window['directionImpact'])) {
+            $texts[] = $window['directionImpact'];
+        }
 
         if ($days_ahead >= 5) {
             $texts[] = 'Esta consulta entra en zona de tendencia. Sirve para orientarte, no para tomarla como parte definitivo.';
@@ -735,7 +741,11 @@ final class DonPesca_Mar_Forecast {
             'waveHeight' => $slot['waveHeight'],
             'wavePeriod' => $slot['wavePeriod'],
             'waveDirection' => $slot['waveDirection'],
+            'windDirection' => $slot['windDirection'],
+            'windDirectionLabel' => $slot['windDirectionLabel'],
+            'waveDirectionLabel' => $slot['waveDirectionLabel'],
             'waveEnergy' => $slot['waveEnergy'],
+            'directionImpact' => $slot['directionImpact'],
             'tideState' => $slot['tideState'],
             'coefficientType' => $slot['coefficientType'],
             'moonPhase' => $slot['moonPhase'],
@@ -1263,6 +1273,49 @@ final class DonPesca_Mar_Forecast {
         }
 
         return 0;
+    }
+
+    private function compass_label(?float $degrees): ?string {
+        if ($degrees === null) {
+            return null;
+        }
+
+        $labels = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+        $normalized = fmod(($degrees + 360.0), 360.0);
+        $index = (int) round($normalized / 22.5) % 16;
+        return $labels[$index];
+    }
+
+    private function direction_impact_text(?float $wind_direction, ?float $wave_direction, ?float $wave_period, ?float $wave_height): string {
+        $parts = [];
+
+        if ($wind_direction !== null) {
+            $wind_label = $this->compass_label($wind_direction);
+            if ($wind_direction >= 20 && $wind_direction <= 80) {
+                $parts[] = "Viento de {$wind_label}: suele meter nordeste/levante y puede ensuciar o incomodar más la deriva.";
+            } elseif ($wind_direction >= 200 && $wind_direction <= 300) {
+                $parts[] = "Viento de {$wind_label}: componente más abierta que puede endurecer la salida según zona.";
+            } else {
+                $parts[] = "Viento de {$wind_label}: impacto más neutro si la intensidad se mantiene contenida.";
+            }
+        }
+
+        if ($wave_direction !== null) {
+            $wave_label = $this->compass_label($wave_direction);
+            if ($wave_direction >= 310 && $wave_direction <= 320) {
+                $parts[] = "Mar de {$wave_label}: entra muy incidente y suele pegar más seco en la costa.";
+            } elseif ($wave_direction >= 290 && $wave_direction < 310) {
+                $parts[] = "Mar de {$wave_label}: mar más tumbada, normalmente algo menos agresiva.";
+            } else {
+                $parts[] = "Mar de {$wave_label}: revisar cómo entra en tu zona porque cambia bastante según abrigo.";
+            }
+        }
+
+        if ($wave_period !== null && $wave_height !== null && $wave_period >= 11.0) {
+            $parts[] = 'El periodo es largo: aunque la altura no sea grande, la ola puede llevar más energía de la que aparenta.';
+        }
+
+        return implode(' ', $parts);
     }
 
     private function moon_phase_label($value): ?string {

@@ -52,10 +52,13 @@
           <div><strong>${formatNumber(window.fishingScore, 0, "/100")}</strong><span>Potencial</span></div>
         </div>
         <div class="donpesca-tags">
+          <span class="donpesca-chip">Viento ${window.windDirectionLabel || "-"} ${formatNumber(window.windDirection, 0, "°")}</span>
+          <span class="donpesca-chip">Mar ${window.waveDirectionLabel || "-"} ${formatNumber(window.waveDirection, 0, "°")}</span>
           <span class="donpesca-chip">Marea ${window.tideState}</span>
           <span class="donpesca-chip">Coeficiente ${window.coefficientType}</span>
           ${renderModelChips(window.models.wind, " kn")}
         </div>
+        <p class="donpesca-copy">${window.directionImpact || ""}</p>
       </article>
     `;
   }
@@ -119,8 +122,10 @@
             <div><dt>Marea</dt><dd>${bestDaySlot ? bestDaySlot.tideState : best.tideState}</dd></div>
             <div><dt>Coeficiente</dt><dd>${bestDaySlot ? bestDaySlot.coefficientType : best.coefficientType}</dd></div>
             <div><dt>Viento</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.windWorst : best.windWorst, 1, " kn")}</dd></div>
+            <div><dt>Dir. viento</dt><dd>${bestDaySlot ? (bestDaySlot.windDirectionLabel || "-") : (best.windDirectionLabel || "-")} · ${formatNumber(bestDaySlot ? bestDaySlot.windDirection : best.windDirection, 0, "°")}</dd></div>
             <div><dt>Rachas</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.gustWorst : best.gustWorst, 1, " kn")}</dd></div>
             <div><dt>Mar</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.waveHeight : best.waveHeight, 2, " m")} · ${formatNumber(bestDaySlot ? bestDaySlot.wavePeriod : best.wavePeriod, 1, " s")}</dd></div>
+            <div><dt>Dir. ola</dt><dd>${bestDaySlot ? (bestDaySlot.waveDirectionLabel || "-") : (best.waveDirectionLabel || "-")} · ${formatNumber(bestDaySlot ? bestDaySlot.waveDirection : best.waveDirection, 0, "°")}</dd></div>
             <div><dt>Marea anterior</dt><dd>${renderTideTurn(bestDaySlot ? bestDaySlot.tidePrevious : best.tidePrevious)}</dd></div>
             <div><dt>Marea siguiente</dt><dd>${renderTideTurn(bestDaySlot ? bestDaySlot.tideNext : best.tideNext)}</dd></div>
           </dl>
@@ -133,6 +138,7 @@
           <p><strong>${bestDaySlot ? bestDaySlot.label : best.timeLabel}</strong></p>
           <p>${bestDaySlot ? bestDaySlot.reason : "Es la ventana con mejor equilibrio del día."}</p>
           <p>${bestDaySlot ? bestDaySlot.reasonDetail : best.reason}</p>
+          <p>${bestDaySlot ? bestDaySlot.directionImpact : best.directionImpact}</p>
           <p>${fishingFit.reason}</p>
         </article>
         <article class="donpesca-card">
