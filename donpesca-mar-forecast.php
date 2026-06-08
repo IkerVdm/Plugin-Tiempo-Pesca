@@ -3,7 +3,7 @@
  * Plugin Name: DonPesca Mar Forecast
  * Plugin URI: https://donpesca.com
  * Description: Informe marino visual para DonPesca con acceso configurable, puertos del País Vasco y lectura de pesca para el Cantábrico.
- * Version: 0.2.0
+ * Version: 0.2.1
  * Author: Codex para DonPesca
  * Text Domain: donpesca-mar-forecast
  */
@@ -25,7 +25,7 @@ final class DonPesca_Mar_Forecast {
     private const OPEN_METEO_MARINE = 'https://marine-api.open-meteo.com/v1/marine';
     private const MET_SUN_URL = 'https://api.met.no/weatherapi/sunrise/3.0/sun';
     private const MET_MOON_URL = 'https://api.met.no/weatherapi/sunrise/3.0/moon';
-    private const USER_AGENT = 'DonPescaMarForecast/0.2 (+https://donpesca.com)';
+    private const USER_AGENT = 'DonPescaMarForecast/0.2.1 (+https://donpesca.com)';
     private const MAX_PUBLIC_DAYS = 7;
 
     private static ?DonPesca_Mar_Forecast $instance = null;
@@ -58,14 +58,14 @@ final class DonPesca_Mar_Forecast {
             'donpesca-mar-forecast',
             $base_url . 'style.css',
             [],
-            '0.2.0'
+            '0.2.1'
         );
 
         wp_register_script(
             'donpesca-mar-forecast',
             $base_url . 'app.js',
             [],
-            '0.2.0',
+            '0.2.1',
             true
         );
     }
@@ -610,9 +610,6 @@ final class DonPesca_Mar_Forecast {
                 'reason' => $sea_state['reason'],
                 'confidence' => $consensus,
                 'fishingScore' => $fishing_score,
-                'recommendationLabel' => $target['label'],
-                'recommendationFamily' => $target['family'],
-                'recommendationReason' => $target['reason'],
                 'tideState' => $tide_state,
                 'coefficientType' => $coeff_type,
                 'windWorst' => round($worst_wind, 1),
@@ -658,7 +655,7 @@ final class DonPesca_Mar_Forecast {
                 ? 'Hay opción, pero con varios matices y necesidad de confirmar sobre la marcha.'
                 : 'No es una ventana limpia para forzar una salida.');
 
-        $texts[] = $window['recommendationReason'];
+        $texts[] = 'La franja destacada se elige por equilibrio entre marea, mar, viento y consistencia del parte.';
 
         if ($days_ahead >= 5) {
             $texts[] = 'Esta consulta entra en zona de tendencia. Sirve para orientarte, no para tomarla como parte definitivo.';
@@ -680,17 +677,17 @@ final class DonPesca_Mar_Forecast {
     private function classify_fishing_fit(array $window): array {
         $score = (float) $window['fishingScore'];
         $label = 'Baja';
-        $reason = 'No hay suficiente encaje entre mar, viento, momento de marea y lectura lunar.';
+        $reason = 'No hay suficiente alineación entre mar, viento, marea y estabilidad del parte.';
 
         if ($score >= 74) {
             $label = 'Alta';
-            $reason = 'La ventana reúne bastantes factores a favor y no depende tanto de forzar la situación.';
+            $reason = 'La ventana reúne bastantes factores a favor y mantiene un contexto bastante ordenado.';
         } elseif ($score >= 60) {
             $label = 'Media-alta';
-            $reason = 'Tiene buen aspecto, pero exige elegir bien zona, táctica y duración de la salida.';
+            $reason = 'Tiene buen aspecto, pero con varios matices y necesidad de validar bien la situación.';
         } elseif ($score >= 46) {
             $label = 'Media';
-            $reason = 'Solo compensa si buscas una oportunidad concreta y muy controlada.';
+            $reason = 'Es una ventana utilizable, pero no especialmente limpia.';
         }
 
         return [
@@ -729,7 +726,7 @@ final class DonPesca_Mar_Forecast {
             'start' => $start->format(DateTimeInterface::ATOM),
             'end' => $end->format(DateTimeInterface::ATOM),
             'label' => wp_date('H:i', $start->getTimestamp(), wp_timezone()) . ' - ' . wp_date('H:i', $end->getTimestamp(), wp_timezone()),
-            'reason' => 'Es la franja del día con mejor equilibrio entre actividad potencial, marea útil, mar y confianza del parte.',
+            'reason' => 'Es la franja del día con mejor equilibrio entre marea, mar, viento y consistencia del parte.',
             'status' => $slot['status'],
             'confidence' => $slot['confidence'],
             'fishingScore' => $slot['fishingScore'],

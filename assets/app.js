@@ -1,21 +1,17 @@
 (function () {
   function formatNumber(value, digits, suffix) {
-    if (value === null || value === undefined || value === "") {
-      return "-";
-    }
+    if (value === null || value === undefined || value === "") return "-";
     return `${Number(value).toFixed(digits)}${suffix || ""}`;
   }
 
   function formatTime(value) {
     if (!value) return "-";
-    const date = new Date(value);
-    return date.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+    return new Date(value).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
   }
 
   function formatDate(value) {
     if (!value) return "-";
-    const date = new Date(value);
-    return date.toLocaleString("es-ES", {
+    return new Date(value).toLocaleString("es-ES", {
       weekday: "short",
       day: "2-digit",
       month: "short",
@@ -53,7 +49,7 @@
           <div><strong>${formatNumber(window.waveHeight, 2, " m")}</strong><span>Ola</span></div>
           <div><strong>${formatNumber(window.wavePeriod, 1, " s")}</strong><span>Periodo</span></div>
           <div><strong>${formatNumber(window.confidence, 0, "%")}</strong><span>Acierto</span></div>
-          <div><strong>${formatNumber(window.fishingScore, 0, "/100")}</strong><span>Encaje pesca</span></div>
+          <div><strong>${formatNumber(window.fishingScore, 0, "/100")}</strong><span>Potencial</span></div>
         </div>
         <div class="donpesca-tags">
           <span class="donpesca-chip">Marea ${window.tideState}</span>
@@ -102,11 +98,11 @@
             </div>
             <div>
               <strong>${formatNumber(fishingFit.score, 0, "/100")}</strong>
-              <span>Probabilidad de pesca</span>
+              <span>Potencial del momento</span>
             </div>
             <div>
               <strong>${fishingFit.label}</strong>
-              <span>Lectura de pesca</span>
+              <span>Lectura global</span>
             </div>
           </div>
           <div class="donpesca-summary">
@@ -119,7 +115,7 @@
           <dl class="donpesca-list">
             <div><dt>Franja</dt><dd>${bestDaySlot ? bestDaySlot.label : best.timeLabel}</dd></div>
             <div><dt>Prob. acierto</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.confidence : best.confidence, 0, "%")}</dd></div>
-            <div><dt>Prob. pesca</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.fishingScore : best.fishingScore, 0, "/100")}</dd></div>
+            <div><dt>Potencial</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.fishingScore : best.fishingScore, 0, "/100")}</dd></div>
             <div><dt>Marea</dt><dd>${bestDaySlot ? bestDaySlot.tideState : best.tideState}</dd></div>
             <div><dt>Coeficiente</dt><dd>${bestDaySlot ? bestDaySlot.coefficientType : best.coefficientType}</dd></div>
             <div><dt>Viento</dt><dd>${formatNumber(bestDaySlot ? bestDaySlot.windWorst : best.windWorst, 1, " kn")}</dd></div>
@@ -133,9 +129,9 @@
 
       <section class="donpesca-grid donpesca-grid--three">
         <article class="donpesca-card">
-          <h3>Mejor momento para pescar</h3>
+          <h3>Mejor franja del día</h3>
           <p><strong>${bestDaySlot ? bestDaySlot.label : best.timeLabel}</strong></p>
-          <p>${bestDaySlot ? bestDaySlot.reason : "Es la ventana con mejor encaje del día."}</p>
+          <p>${bestDaySlot ? bestDaySlot.reason : "Es la ventana con mejor equilibrio del día."}</p>
           <p>${bestDaySlot ? bestDaySlot.reasonDetail : best.reason}</p>
           <p>${fishingFit.reason}</p>
         </article>
@@ -157,7 +153,7 @@
       <section class="donpesca-section">
         <div class="donpesca-section__head">
           <h3>Ventanas recomendadas</h3>
-          <p>Ordenadas por encaje de pesca realista y después por confianza del parte.</p>
+          <p>Ordenadas por equilibrio de condiciones y después por confianza del parte.</p>
         </div>
         <div class="donpesca-grid donpesca-grid--windows">
           ${payload.windows.map(renderWindow).join("")}
@@ -167,7 +163,7 @@
       <section class="donpesca-section">
         <div class="donpesca-section__head">
           <h3>Sol, luna y actividad</h3>
-          <p>La fase lunar y los cambios de luz pesan distinto según la familia objetivo.</p>
+          <p>La fase lunar y los cambios de luz añaden contexto a la franja destacada.</p>
         </div>
         <div class="donpesca-grid donpesca-grid--astro">
           ${renderAstronomy(payload.astronomy)}
@@ -181,9 +177,7 @@
     const results = document.querySelector("[data-donpesca-results]");
     const status = document.querySelector("[data-donpesca-status]");
 
-    if (!form || !results || !status || typeof DonPescaMarForecast === "undefined") {
-      return;
-    }
+    if (!form || !results || !status || typeof DonPescaMarForecast === "undefined") return;
 
     async function submitForm() {
       status.textContent = DonPescaMarForecast.strings.loading;
